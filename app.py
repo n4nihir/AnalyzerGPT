@@ -24,11 +24,9 @@ if 'messages' not in st.session_state:
 if 'autogen_team_state' not in st.session_state:
     st.session_state.autogen_team_state = None
 
-task = TextMessage(content=st.text_input("Enter your task",value = 'Can you give me number of columns in my data (file is data.csv)'), source="user")
+task_query = st.chat_input("Enter your Task.")
 
-# task = st.chat_input("Enter your Task.")
-
-async def run_analyzer_gpt(docker,openai_model_client,task):
+async def run_analyzer_gpt(docker,openai_model_client,task_query):
 
     try:
         await start_docker_container(docker)
@@ -40,6 +38,8 @@ async def run_analyzer_gpt(docker,openai_model_client,task):
 
         if st.session_state.autogen_team_state is not None:
             await team.load_state(st.session_state.autogen_team_state)
+
+        task = TextMessage(content=task_query, source="user")
         
         
         async for message in team.run_stream(task=task):
@@ -62,7 +62,6 @@ async def run_analyzer_gpt(docker,openai_model_client,task):
                 # yield msg
                 st.markdown(msg)
                 st.session_state.messages.append(msg)
-
         st.session_state.autogen_team_state = await team.save_state()
         return None
     except Exception as e:
@@ -73,11 +72,17 @@ async def run_analyzer_gpt(docker,openai_model_client,task):
                 
 if st.session_state.messages:
     for msg in st.session_state.messages:
-        st.markdown(msg)
+        if isinstance(msg, str):
+            st.markdown(msg)
+        elif isinstance(msg, dict):
+            if msg.get("type") == "image":
+                st.image(msg["path"], caption=msg.get("caption", ""))
+            elif msg.get("type") == "text":
+                st.markdown(msg.get("content", ""))
 
 
-if task:
-    if uploaded_file is not None and task:
+if task_query:
+    if uploaded_file is not None and task_query:
         
         if not os.path.exists('temp'):
             os.makedirs('temp')
@@ -90,13 +95,20 @@ if task:
     docker = getDockerCommandLineCodeExecutor()
 
 
-    error = asyncio.run(run_analyzer_gpt(docker,openai_model_client,task))
+    error = asyncio.run(run_analyzer_gpt(docker,openai_model_client,task_query))
 
     if error:
         st.error("An error occured :" , {error})
 
     if os.path.exists('temp/output.png'):
-        st.image('temp/output.png',caption='Analysis File')
+        st.image('temp/output.png', caption='Analysis File')
+
+        st.session_state.messages.append({
+            "type": "image",
+            "path": "temp/output.png",
+            "caption": "Analysis File"
+        })
+
     
 else:
     st.warning("Please upload the csv file")
